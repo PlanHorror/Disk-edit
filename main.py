@@ -26,12 +26,16 @@ def disk_count():
             print("Total Sectors:", disk_size // diskDriver.BytesPerSector)
         return diskDriver
 #Execute the script as admin 
-def read_sector(disk, sector_no = 0):
+def read_sector(disk, sector_no):
     with open(disk.Name, "rb", buffering=0) as f:
         f.seek(sector_no * disk.BytesPerSector)
         read = f.read(disk.BytesPerSector)
+        print("Sector", sector_no)
+        print("Offset:", f.tell() - disk.BytesPerSector)    
+    #Show bit in sector with ASCII and Hex
         for i in range(0, len(read), 16):
-            print(" ".join("{:02x}".format(c) for c in read[i:i+16]))
+            print(" ".join("{:02x}".format(c) for c in read[i:i+16]), end=" ")
+            print("".join(chr(c) if 32 <= c <= 126 else "." for c in read[i:i+16]))
 def write_sector(disk, sector_no, data):
     with open(disk.Name, "r+b", buffering=0) as f:
         f.seek(sector_no * disk.BytesPerSector)
@@ -46,7 +50,7 @@ def main():
     # else:
         #ctypes.windll.shell32.ShellExecuteW(None, u"runas", unicode(sys.executable), unicode(" ".join(sys.argv)), None, 1)
     diskDrive = disk_count()
-    read_sector(diskDrive, 0)
+    read_sector(diskDrive, 1)
     # write_sector(diskDrive, 0, b"Hello World")
 if __name__ == "__main__":
     main()
