@@ -40,6 +40,87 @@ def write_sector(disk, sector_no, data):
     with open(disk.Name, "r+b", buffering=0) as f:
         f.seek(sector_no * disk.BytesPerSector)
         f.write(data)
+def read_sector_in_volume(volume_name, sector_no):
+    disk_fd = os.open(volume_name, os.O_RDONLY | os.O_BINARY)
+    data = os.read(disk_fd, (sector_no + 1) * 512) 
+    #format data in hex with 16 hex in a row
+    print("Volume", volume_name.split("\\")[-1])
+    print("Sector", sector_no)
+    print("Offset:", sector_no * 512)
+
+    for i in range(0, len(data)):
+        if i % 16 == 0:
+            if i != 0:
+                for j in range(i-16, i):
+                    print(chr(data[j]) if 32 <= data[j] <= 126 else ".", end="")
+            print()
+        #print hex and ascii
+        print("{:02x}".format(data[i]), end=" ")
+        if i == len(data) - 1:
+            for j in range(i - 15, i+1):
+                print(chr(data[j]) if 32 <= data[j] <= 126 else ".", end="")  
+def read_gpt(disk):
+    with open(disk.Name, "rb", buffering=0) as f:
+        f.seek(512)
+        data = f.read(512)
+        print("GPT Header".center(50, "-"))
+        print("Signature:", data[0:8].decode("utf-8"))
+        print("Revision:", int.from_bytes(data[8:12], "little"))
+        print("Header Size:", int.from_bytes(data[12:16], "little"))
+        print("Header CRC32:",end="")
+        for i in range(16, 20, 1):
+            print(data[i:i+1].hex().upper(), end=" ")
+        print()
+        print("Reserved:", int.from_bytes(data[20:24], "little"))
+        print("Current LBA:", int.from_bytes(data[24:32], "little"))
+        print("Backup LBA:", int.from_bytes(data[32:40], "little"))
+        print("First Usable LBA:", int.from_bytes(data[40:48], "little"))
+        print("Last Usable LBA:", int.from_bytes(data[48:56], "little"))
+        print("Disk GUID:", end="")
+        for i in range(56, 72, 1): 
+            print(data[i:i+1].hex().upper(), end=" ")
+        print()
+        print("Starting LBA of Partition Entry:", int.from_bytes(data[72:80], "little"))
+        print("Number of Partition Entries:", int.from_bytes(data[80:84], "little"))
+        print("Size of Partition Entry:", int.from_bytes(data[84:88], "little"))
+        print("CRC32 of Partition Entry Array:", int.from_bytes(data[88:92], "little"))  
+        print("GPT Header End".center(50, "-"))
+        #Count entry different from 0
+def count_partition_entry(disk):
+    with open(disk.Name, "rb") as f:
+        entry_count = 0
+        for i in range(128):
+            f.seek(1024 + 128 * i)
+            data = f.read(128)
+            if data[0] != 0:
+                entry_count += 1
+                print("Partition Entry", entry_count)
+                print("Partition Type GUID:", data[0:16].hex())
+                print("Unique Partition GUID:", data[16:32].hex())
+                print("First LBA:", int.from_bytes(data[32:40], "little"))
+                print("Last LBA:", int.from_bytes(data[40:48], "little"))
+                print("Attribute Flags:", int.from_bytes(data[48:52], "little"))
+                print("Partition Name:", data[56:128].decode("utf-16-le").rstrip("\x00"))
+                print("-" * 50)
+
+def print_partition_info():
+    for partition in c.query("Select * FROM Win32_DiskPartition"):
+        #print name of partition
+        print(partition)
+def print_logical_disk_info():
+    for logical_disk in c.query("Select * FROM Win32_LogicalDisk"):
+        print(logical_disk)
+def print_volume_info():
+    for volume in c.query("Select * FROM Win32_Volume"):
+        print(volume)
+def print_disk_info():
+    for disk in c.query("Select * FROM Win32_DiskDrive"):
+        print(disk)
+def print_physical_media_info():
+    for physical_media in c.query("Select * FROM Win32_PhysicalMedia"):
+        print(physical_media)
+def edit_hex_byte(data, offset, byte):
+    return data[:offset] + bytes([byte]) + data[offset+1:]
 #Main function
 def main():
     if is_admin():
@@ -47,12 +128,39 @@ def main():
     else:
     # if sys.version_info[0] == 3:
         ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, " ".join(sys.argv), None, 1)
+        exit()
     # else:
         #ctypes.windll.shell32.ShellExecuteW(None, u"runas", unicode(sys.executable), unicode(" ".join(sys.argv)), None, 1)
     diskDrive = disk_count()
-    read_sector(diskDrive, 1)
+    #Option to choose open disk or volume
+    print("1. Open Disk")
+    print("2. Open Volume")
+    print("3. Partition Info")
+    choice = input("Enter your choice: ")
+    if choice == "1":
+        
+        read_sector(diskDrive, 0)
+    elif choice == "2":
+        volume = input("Enter volume name: ")
+        volume = r"\\.\%s" % volume + ":"
+        read_sector_in_volume(volume, 0)
+    elif choice == "3":
+        print("Partition Info:")
+        print_partition_info()
+    else:
+        print("Invalid choice")
+        exit()
+    print("Disk Info: ")
+
+    # print("Logical Disk Info: ")
+    # print_logical_disk_info()
+    read_gpt(diskDrive)
+    count_partition_entry(diskDrive)
+    # print("Volume Info: ")
+    # print_volume_info()
     # write_sector(diskDrive, 0, b"Hello World")
 if __name__ == "__main__":
     main()
 #pause the screen
-os.system("pause")
+print("\nPress Enter to continue...")
+input()
