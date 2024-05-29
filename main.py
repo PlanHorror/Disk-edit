@@ -22,7 +22,6 @@ def disk_count():
                 except PermissionError:
                     break
             print(diskDriver.Name, "have", disk_size, "bytes")
-            print("BytesPerSector:", diskDriver.BytesPerSector)
             print("Total Sectors:", disk_size // diskDriver.BytesPerSector)
         return diskDriver
 #Execute the script as admin 
@@ -86,6 +85,7 @@ def read_gpt(disk):
         print("CRC32 of Partition Entry Array:", int.from_bytes(data[88:92], "little"))  
         print("GPT Header End".center(50, "-"))
         #Count entry different from 0
+
 def count_partition_entry(disk):
     with open(disk.Name, "rb") as f:
         entry_count = 0
@@ -101,24 +101,56 @@ def count_partition_entry(disk):
                 print("Last LBA:", int.from_bytes(data[40:48], "little"))
                 print("Attribute Flags:", int.from_bytes(data[48:52], "little"))
                 print("Partition Name:", data[56:128].decode("utf-16-le").rstrip("\x00"))
-                print("-" * 50)
-
-def print_partition_info():
-    for partition in c.query("Select * FROM Win32_DiskPartition"):
-        #print name of partition
-        print(partition)
-def print_logical_disk_info():
-    for logical_disk in c.query("Select * FROM Win32_LogicalDisk"):
-        print(logical_disk)
-def print_volume_info():
-    for volume in c.query("Select * FROM Win32_Volume"):
-        print(volume)
-def print_disk_info():
-    for disk in c.query("Select * FROM Win32_DiskDrive"):
-        print(disk)
-def print_physical_media_info():
-    for physical_media in c.query("Select * FROM Win32_PhysicalMedia"):
-        print(physical_media)
+                if entry_count != 3:
+                    open_volume(disk, int.from_bytes(data[32:40], "little"))
+                    print("Partition Entry End".center(50, "-"))
+                else:
+                    print("Partition Entry End".center(50, "-"))
+def open_volume(disk, lba):
+    with open(disk.Name, "rb") as f:
+        f.seek(lba * 512)
+        data = f.read(512)
+        file_system = data[3:11].hex()
+        print("Volume Boot sector: ".center(50, " "))
+        print("Jump Instruction:", data[0:3].hex())
+        print("OEM ID (File system):",data[3:11].decode("utf-8") )
+        if file_system == "4e54465320202020":
+            print("BIOS Parameter Block: ".center(50, " "))
+            print("Bytes per Sector:", int.from_bytes(data[11:13], "little"))
+            print("Sectors per Cluster:", int.from_bytes(data[13:14], "little"))
+            print("Reserved Sectors:", int.from_bytes(data[14:16], "little"))
+            print("Media Descriptor:", int.from_bytes(data[21:22], "little"))
+            print("Sectors per Track:", int.from_bytes(data[24:26], "little"))
+            print("Number of Heads:", int.from_bytes(data[26:28], "little"))
+            print("Hidden Sectors:", int.from_bytes(data[28:32], "little"))
+            print("Signature:", data[36:40].hex())
+            print("Total Sector:", int.from_bytes(data[40:48], "little"))
+            print("Cluster Number of $MFT:", int.from_bytes(data[48:56], "little"))
+            print("Cluster Number of $MFTMirr:", int.from_bytes(data[56:64], "little"))
+            print("Clusters per File Record Segment:", int.from_bytes(data[64:68], "little"))
+            print("Clusters per Index Buffer:", int.from_bytes(data[68:72], "little"))
+            print("Volume Serial Number:", int.from_bytes(data[72:76], "little"))
+            print("Checksum:", int.from_bytes(data[80:82], "little"))
+            print("Bootstrapping Code: Data from 82 to 510")
+            print("Signature:", data[510:512].hex().upper())
+def read_MFT(disk, lba):
+    with open(disk.Name, "rb") as f:
+        f.seek(lba * 512)
+        data = f.read(512)
+        print("Master File Table".center(50, "-"))
+        print("Signature:", data[0:4].decode("utf-8"))
+        print("Fixup Array Offset:", int.from_bytes(data[4:6], "little"))
+        print("Fixup Array Size:", int.from_bytes(data[6:8], "little"))
+        print("Logfile Sequence Number:", int.from_bytes(data[8:16], "little"))
+        print("Sequence Number:", int.from_bytes(data[16:18], "little"))
+        print("Hard Link Count:", int.from_bytes(data[18:20], "little"))
+        print("Offset to First Attribute:", int.from_bytes(data[20:22], "little"))
+        print("Flags:", int.from_bytes(data[22:24], "little"))
+        print("Used Size of MFT Entry:", int.from_bytes(data[24:26], "little"))
+        print("Allocated Size of MFT Entry:", int.from_bytes(data[26:28], "little"))
+        print("File Reference to Base File Record:", int.from_bytes(data[28:36], "little"))
+        print("Next Attribute ID:", int.from_bytes(data[36:38], "little"))
+        print("MFT Entry End".center(50, "-"))
 def edit_hex_byte(data, offset, byte):
     return data[:offset] + bytes([byte]) + data[offset+1:]
 #Main function
@@ -132,33 +164,28 @@ def main():
     # else:
         #ctypes.windll.shell32.ShellExecuteW(None, u"runas", unicode(sys.executable), unicode(" ".join(sys.argv)), None, 1)
     diskDrive = disk_count()
+    
     #Option to choose open disk or volume
     print("1. Open Disk")
-    print("2. Open Volume")
-    print("3. Partition Info")
+    print("2. Read Sector")
+    print("3. Exit")
     choice = input("Enter your choice: ")
     if choice == "1":
-        
         read_sector(diskDrive, 0)
+        read_gpt(diskDrive)
+        count_partition_entry(diskDrive)
+        #return to main menu
+        main()
     elif choice == "2":
-        volume = input("Enter volume name: ")
-        volume = r"\\.\%s" % volume + ":"
-        read_sector_in_volume(volume, 0)
+        n = input("Sector: ")
+        read_sector(diskDrive, n)
+        main()
     elif choice == "3":
-        print("Partition Info:")
-        print_partition_info()
+        exit()
     else:
         print("Invalid choice")
         exit()
-    print("Disk Info: ")
 
-    # print("Logical Disk Info: ")
-    # print_logical_disk_info()
-    read_gpt(diskDrive)
-    count_partition_entry(diskDrive)
-    # print("Volume Info: ")
-    # print_volume_info()
-    # write_sector(diskDrive, 0, b"Hello World")
 if __name__ == "__main__":
     main()
 #pause the screen
