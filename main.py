@@ -39,25 +39,6 @@ def write_sector(disk, sector_no, data):
     with open(disk.Name, "r+b", buffering=0) as f:
         f.seek(sector_no * disk.BytesPerSector)
         f.write(data)
-def read_sector_in_volume(volume_name, sector_no):
-    disk_fd = os.open(volume_name, os.O_RDONLY | os.O_BINARY)
-    data = os.read(disk_fd, (sector_no + 1) * 512) 
-    #format data in hex with 16 hex in a row
-    print("Volume", volume_name.split("\\")[-1])
-    print("Sector", sector_no)
-    print("Offset:", sector_no * 512)
-
-    for i in range(0, len(data)):
-        if i % 16 == 0:
-            if i != 0:
-                for j in range(i-16, i):
-                    print(chr(data[j]) if 32 <= data[j] <= 126 else ".", end="")
-            print()
-        #print hex and ascii
-        print("{:02x}".format(data[i]), end=" ")
-        if i == len(data) - 1:
-            for j in range(i - 15, i+1):
-                print(chr(data[j]) if 32 <= data[j] <= 126 else ".", end="")  
 def read_gpt(disk):
     with open(disk.Name, "rb", buffering=0) as f:
         f.seek(512)
@@ -89,32 +70,46 @@ def read_gpt(disk):
 def count_partition_entry(disk):
     with open(disk.Name, "rb") as f:
         entry_count = 0
+        entry = []
         for i in range(128):
             f.seek(1024 + 128 * i)
             data = f.read(128)
             if data[0] != 0:
                 entry_count += 1
-                print("Partition Entry", entry_count)
+                print(str("Partition Entry " + str(entry_count)).center(50, "-"))
                 print("Partition Type GUID:", data[0:16].hex())
                 print("Unique Partition GUID:", data[16:32].hex())
                 print("First LBA:", int.from_bytes(data[32:40], "little"))
                 print("Last LBA:", int.from_bytes(data[40:48], "little"))
                 print("Attribute Flags:", int.from_bytes(data[48:52], "little"))
                 print("Partition Name:", data[56:128].decode("utf-16-le").rstrip("\x00"))
+                first_lba = int.from_bytes(data[32:40], "little")
                 if entry_count != 3:
-                    open_volume(disk, int.from_bytes(data[32:40], "little"))
+                    file_system = open_volume(disk, int.from_bytes(data[32:40], "little"))
                     print("Partition Entry End".center(50, "-"))
+                    entry.append([entry_count, first_lba, file_system ])
                 else:
                     print("Partition Entry End".center(50, "-"))
+        return entry
 def open_volume(disk, lba):
     with open(disk.Name, "rb") as f:
         f.seek(lba * 512)
         data = f.read(512)
         file_system = data[3:11].hex()
-        print("Volume Boot sector: ".center(50, " "))
-        print("Jump Instruction:", data[0:3].hex())
         print("OEM ID (File system):",data[3:11].decode("utf-8") )
-        if file_system == "4e54465320202020":
+        return file_system
+def choose_volume_entry_NTFS(disk, entry):
+    if entry[2] != "4e54465320202020":
+        print("Only NTFS file system is supported. Please choose another partition")
+        return
+    else:
+        with open(disk.Name, "rb") as f:
+            newoffset = entry[1] * 512
+            f.seek(newoffset)
+            data = f.read(512)
+            print("Volume Boot sector: ".center(50, " "))
+            print("Jump Instruction:", data[0:3].hex())
+            print("OEM ID (File system):",data[3:11].decode("utf-8") )
             print("BIOS Parameter Block: ".center(50, " "))
             print("Bytes per Sector:", int.from_bytes(data[11:13], "little"))
             print("Sectors per Cluster:", int.from_bytes(data[13:14], "little"))
@@ -132,27 +127,77 @@ def open_volume(disk, lba):
             print("Volume Serial Number:", int.from_bytes(data[72:76], "little"))
             print("Checksum:", int.from_bytes(data[80:82], "little"))
             print("Bootstrapping Code: Data from 82 to 510")
-            print("Signature:", data[510:512].hex().upper())
-def read_MFT(disk, lba):
-    with open(disk.Name, "rb") as f:
-        f.seek(lba * 512)
-        data = f.read(512)
-        print("Master File Table".center(50, "-"))
-        print("Signature:", data[0:4].decode("utf-8"))
-        print("Fixup Array Offset:", int.from_bytes(data[4:6], "little"))
-        print("Fixup Array Size:", int.from_bytes(data[6:8], "little"))
-        print("Logfile Sequence Number:", int.from_bytes(data[8:16], "little"))
-        print("Sequence Number:", int.from_bytes(data[16:18], "little"))
-        print("Hard Link Count:", int.from_bytes(data[18:20], "little"))
-        print("Offset to First Attribute:", int.from_bytes(data[20:22], "little"))
-        print("Flags:", int.from_bytes(data[22:24], "little"))
-        print("Used Size of MFT Entry:", int.from_bytes(data[24:26], "little"))
-        print("Allocated Size of MFT Entry:", int.from_bytes(data[26:28], "little"))
-        print("File Reference to Base File Record:", int.from_bytes(data[28:36], "little"))
-        print("Next Attribute ID:", int.from_bytes(data[36:38], "little"))
-        print("MFT Entry End".center(50, "-"))
-def edit_hex_byte(data, offset, byte):
-    return data[:offset] + bytes([byte]) + data[offset+1:]
+            print("Signature:", data[510:512].hex().upper())    
+            print("Volume Boot sector End".center(50, " "))
+            bytes_per_sector = int.from_bytes(data[11:13], "little")
+            sectors_per_cluster = int.from_bytes(data[13:14], "little")
+#             print("Do you want to read the Master File Table? (Y/N)")
+#             choice = input("Enter your choice: ")
+#             if choice == "Y" or choice == "y":
+#                 print("Choose entry in MFT ")
+#                 entry = int(input("Enter your choice: "))
+#                 read_entry_in_MFT(disk, newoffset, bytes_per_sector * sectors_per_cluster, entry)
+#             else:
+#                 main()
+   
+# def read_entry_in_MFT(disk, offset, cluster_size, entry):
+#     with open(disk.Name, "rb") as f:
+#         f.seek(offset)
+#         data = f.read(cluster_size)
+#         print("Master File Table Entry".center(50, "-"))
+#         print("Signature:", data[0:4].decode("utf-8"))
+#         print("Fixup Array: ", data[4:6].hex())
+#         print("Update Sequence Array: ", data[6:8].hex())
+#         print("Logfile Sequence Number: ", int.from_bytes(data[8:16], "little"))
+#         print("Sequence Number: ", int.from_bytes(data[16:18], "little"))
+#         print("Hard Link Count: ", int.from_bytes(data[18:20], "little"))
+#         print("Offset to First Attribute: ", int.from_bytes(data[20:22], "little"))
+#         print("Flags: ", int.from_bytes(data[22:24], "little"))
+#         print("Used Size of MFT Entry: ", int.from_bytes(data[24:28], "little"))
+#         print("Allocated Size of MFT Entry: ", int.from_bytes(data[28:32], "little"))
+#         print("File Reference to Base Record: ", int.from_bytes(data[32:40], "little"))
+#         print("Next Attribute ID: ", int.from_bytes(data[40:42], "little"))
+#         print("MFT Entry End".center(50, "-"))
+#         print("Choose attribute type to read or press enter to return to main menu")
+#         attribute = int(input("Enter your choice: "))
+#         if attribute == "":
+#             main()
+#         else:
+#             read_attribute(disk, offset, cluster_size, attribute, entry)
+# def read_attribute(disk, offset, cluster_size, attribute, entry):
+#     with open(disk.Name, "rb") as f:
+#         f.seek(offset)
+#         data = f.read(cluster_size)
+#         print("Attribute Header".center(50, "-"))
+#         print("Attribute Type: ", int.from_bytes(data[0:4], "little"))
+#         print("Length of Attribute: ", int.from_bytes(data[4:8], "little"))
+#         print("Non-resident Flag: ", int.from_bytes(data[8:9], "little"))
+#         print("Name Length: ", int.from_bytes(data[9:10], "little"))
+#         print("Offset to Name: ", int.from_bytes(data[10:12], "little"))
+#         print("Flags: ", int.from_bytes(data[12:14], "little"))
+#         print("Attribute ID: ", int.from_bytes(data[14:16], "little"))
+#         print("Attribute Header End".center(50, "-"))
+#         if int.from_bytes(data[0:4], "little") == 16:
+#             print("Resident Attribute".center(50, "-"))
+#             print("Attribute Value: ", data[16:16 + int.from_bytes(data[4:8], "little")])
+#             print("Resident Attribute End".center(50, "-"))
+#         else:
+#             print("Non-resident Attribute".center(50, "-"))
+#             print("Starting VCN: ", int.from_bytes(data[16:24], "little"))
+#             print("Ending VCN: ", int.from_bytes(data[24:32], "little"))
+#             print("Offset to Runlist: ", int.from_bytes(data[32:34], "little"))
+#             print("Compression Unit Size: ", int.from_bytes(data[34:36], "little"))
+#             print("Allocated Size of Attribute: ", int.from_bytes(data[40:48], "little"))
+#             print("Real Size of Attribute: ", int.from_bytes(data[48:56], "little"))
+#             print("Non-resident Attribute End".center(50, "-"))
+#             print("Choose runlist or press enter to return to main menu")
+#             runlist = int(input("Enter your choice: "))
+#             if runlist == "":
+#                 main()
+#             else:
+#                 read_runlist(disk, offset, cluster_size, runlist, entry)
+# def edit_hex_byte(data, offset, byte):
+#     return data[:offset] + bytes([byte]) + data[offset+1:]
 #Main function
 def main():
     if is_admin():
@@ -173,12 +218,27 @@ def main():
     if choice == "1":
         read_sector(diskDrive, 0)
         read_gpt(diskDrive)
-        count_partition_entry(diskDrive)
+        list_entry = count_partition_entry(diskDrive)
+        print(list_entry)
+        print("Choose volume entry or press enter to return to main menu:")
+        entry = int(input("Enter your choice: "))
+        if entry == "":
+            main()
+        else:
+            for i in list_entry:
+                if i[0] == entry:
+                    entry_object = list_entry[entry - 1]
+                    choose_volume_entry_NTFS(diskDrive, entry_object)
+                    break
+            
         #return to main menu
         main()
     elif choice == "2":
-        n = input("Sector: ")
-        read_sector(diskDrive, n)
+        try:
+            n = int(input("Sector: "))
+            read_sector(diskDrive, n)
+        except:
+            print("Invalid sector number")
         main()
     elif choice == "3":
         exit()
