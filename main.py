@@ -131,34 +131,38 @@ def choose_volume_entry_NTFS(disk, entry):
             print("Volume Boot sector End".center(50, " "))
             bytes_per_sector = int.from_bytes(data[11:13], "little")
             sectors_per_cluster = int.from_bytes(data[13:14], "little")
-#             print("Do you want to read the Master File Table? (Y/N)")
-#             choice = input("Enter your choice: ")
-#             if choice == "Y" or choice == "y":
-#                 print("Choose entry in MFT ")
-#                 entry = int(input("Enter your choice: "))
-#                 read_entry_in_MFT(disk, newoffset, bytes_per_sector * sectors_per_cluster, entry)
-#             else:
-#                 main()
+            offset_MFT = int.from_bytes(data[48:56], "little") * bytes_per_sector * sectors_per_cluster + newoffset
+            print("Do you want to read the Master File Table? (Y/N)")
+            choice = input("Enter your choice: ")
+            if choice == "Y" or choice == "y":
+                print("Choose entry in MFT ")
+                entry = int(input("Enter your choice: "))
+                read_entry_in_MFT(disk,offset_MFT, entry)
+            else:
+                main()
    
-# def read_entry_in_MFT(disk, offset, cluster_size, entry):
-#     with open(disk.Name, "rb") as f:
-#         f.seek(offset)
-#         data = f.read(cluster_size)
-#         print("Master File Table Entry".center(50, "-"))
-#         print("Signature:", data[0:4].decode("utf-8"))
-#         print("Fixup Array: ", data[4:6].hex())
-#         print("Update Sequence Array: ", data[6:8].hex())
-#         print("Logfile Sequence Number: ", int.from_bytes(data[8:16], "little"))
-#         print("Sequence Number: ", int.from_bytes(data[16:18], "little"))
-#         print("Hard Link Count: ", int.from_bytes(data[18:20], "little"))
-#         print("Offset to First Attribute: ", int.from_bytes(data[20:22], "little"))
-#         print("Flags: ", int.from_bytes(data[22:24], "little"))
-#         print("Used Size of MFT Entry: ", int.from_bytes(data[24:28], "little"))
-#         print("Allocated Size of MFT Entry: ", int.from_bytes(data[28:32], "little"))
-#         print("File Reference to Base Record: ", int.from_bytes(data[32:40], "little"))
-#         print("Next Attribute ID: ", int.from_bytes(data[40:42], "little"))
-#         print("MFT Entry End".center(50, "-"))
-#         print("Choose attribute type to read or press enter to return to main menu")
+def read_entry_in_MFT(disk, offset_MFT, entry):
+    with open(disk.Name, "rb") as f:
+        f.seek(offset_MFT)
+        data = f.read(entry * 1024 + 1024)
+        print("Master File Table Entry".center(50, "-"))
+        print("Signature:", data[0:4].decode("utf-8"))
+        print("Fixup Array: ", data[4:6].hex())
+        print("Update Sequence Array: ", data[6:8].hex())
+        print("Logfile Sequence Number: ", int.from_bytes(data[8:16], "little"))
+        print("Sequence Number: ", int.from_bytes(data[16:18], "little"))
+        print("Hard Link Count: ", int.from_bytes(data[18:20], "little"))
+        print("Offset to First Attribute: ", int.from_bytes(data[20:22], "little"))
+        print("Flags: ", int.from_bytes(data[22:24], "little"))
+        print("Used Size of MFT Entry: ", int.from_bytes(data[24:28], "little"))
+        print("Allocated Size of MFT Entry: ", int.from_bytes(data[28:32], "little"))
+        print("File Reference to Base Record: ", int.from_bytes(data[32:40], "little"))
+        print("Next Attribute ID: ", int.from_bytes(data[40:44], "little"))
+        print("ID of this MFT Record: ", int.from_bytes(data[44:48], "little"))
+        print("Update Sequence Number: ", int.from_bytes(data[48:50], "little"))
+        print("Update Sequence Array Offset: ", int.from_bytes(data[50:56], "little"))
+        print("MFT Entry End".center(50, "-"))
+        print("Choose attribute type to read or press enter to return to main menu")
 #         attribute = int(input("Enter your choice: "))
 #         if attribute == "":
 #             main()
@@ -219,7 +223,6 @@ def main():
         read_sector(diskDrive, 0)
         read_gpt(diskDrive)
         list_entry = count_partition_entry(diskDrive)
-        print(list_entry)
         print("Choose volume entry or press enter to return to main menu:")
         entry = int(input("Enter your choice: "))
         if entry == "":
@@ -227,7 +230,7 @@ def main():
         else:
             for i in list_entry:
                 if i[0] == entry:
-                    entry_object = list_entry[entry - 1]
+                    entry_object = i
                     choose_volume_entry_NTFS(diskDrive, entry_object)
                     break
             
